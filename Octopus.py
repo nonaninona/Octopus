@@ -114,7 +114,7 @@ class ImageAddPage(tk.Frame):
         bBack.pack()
         
     def addImage(self):
-        #get filePath
+        #get filePathisc
         self.filePath = tk.filedialog.askopenfilename()
 
         #show file's thumbnail
@@ -193,14 +193,14 @@ class SetCharacterPage(tk.Frame):
 
 
     def addCharacter(self, handler):
-        #update listBox/make directory/copy representative image/update characters.txt file
-        self.lCharacterList.insert(handler.characterNumber, characterName)
-        handler.characterNumber = handler.characterNumber + 1
-        
+        #make directory/update listBox/copy representative image/update characters.txt file
         characterName = self.tCharacterName.get(1.0,tk.END)
         characterName = characterName.rstrip("\n")
         characterDirectory = handler.characterDirectory + "\\" + characterName
         makeDir(characterDirectory)
+
+        self.lCharacterList.insert(handler.characterNumber, characterName)
+        handler.characterNumber = handler.characterNumber + 1
         
         originalImage = open(self.characterPhotoPath, "rb")
         image = open(characterDirectory + "\\representiveImage.png", "wb")
@@ -217,11 +217,12 @@ class SetCharacterPage(tk.Frame):
         
     def deleteCharacter(self, handler):
         #update listBox/delete directory/update characters.txt file
+        NameToDelete = self.lCharacterList.get(tk.ACTIVE)
+        NameToDelete = NameToDelete.rstrip("\n")
+        deleteDir(handler.characterDirectory + "\\" + NameToDelete)
+        
         self.lCharacterList.delete(tk.ACTIVE)
         handler.characterNumber = handler.characterNumber - 1
-              
-        NameToDelete = self.lCharacterList.get(tk.ACTIVE)
-        deleteDir(handler.characterDirectory + NameToDelete)
         
         f = open(handler.characterTextDirectory, "r")
         string =  f.read()
