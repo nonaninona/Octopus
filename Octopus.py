@@ -1,6 +1,9 @@
 import tkinter as tk
 from tkinter import filedialog
+from tkinter import messagebox
 import os
+import face_recognition
+import pickle
 
 def makeFile(directory):
     if not os.path.isfile(directory):
@@ -40,18 +43,33 @@ class App(tk.Tk):
         self.photoTextDirectory = self.photoDirectory + "\photos.txt"
         makeFile(self.photoTextDirectory)
 
-        #set fileNumber, characterNumber
-        f = open(self.characterTextDirectory, "r")
-        string = f.read()
-        string.split("\n")
-        self.characterNumber = len(string)
+        #set photoNumber, characterNumber
+        f = open(self.characterTextDirectory, "rb")
+        try:
+            self.characters = pickle.load(f)
+        except EOFError:
+            self.characters = []
+        self.characterNumber = len(self.characters)
         f.close()
         
-        f = open(self.photoTextDirectory, "r")
-        number = f.read()
-        self.photoNumber = int(number) if number else 0
+        f = open(self.photoTextDirectory, "rb")
+        try:
+            number = pickle.load(f)
+        except EOFError:
+            f.close()
+            f = open(self.photoTextDirectory, "wb")
+            number = 0
+            pickle.dump(number,f)
+        self.photoNumber = number
         f.close()
 
+        #load characterImageEncodingSet
+        self.charactersRepresentativeImageEncoding = []
+        i=0
+        for character in self.characters:
+            f = open(self.characterDirectory + "\\" + character + "\encoding.txt", "rb")
+            self.charactersRepresentativeImageEncoding.append(pickle.load(f))
+        
         #make window and frames
         tk.Tk.__init__(self)
 
@@ -117,22 +135,41 @@ class ImageAddPage(tk.Frame):
         #get filePathisc
         self.filePath = tk.filedialog.askopenfilename()
 
+        #exception
+        if not self.filePath:
+            return
+        fileName = self.filePath.split("\\")
+        fileName = fileName[len(fileName)-1]
+        fileType = fileName.split(".")
+        fileType = fileType[1]
+        properType = ["png","PNG", "jpg", "JPG", "gif", "GIF", "jpeg", "JPEG"]
+        if fileType not in properType:
+            messagebox.showerror(title="경로 오류", message="이미지 파일이 아닙니다")
+            return
+        
         #show file's thumbnail
-        self.pFileImage = tk.PhotoImage(file=self.filePath)
-        self.pFileImage = self.pFileImage.subsample(2,2)
-        self.lFileImage.destroy()
-        self.lFileImage = tk.Label(self, image=self.pFileImage)
-        self.lFileImage.pack()
+        #self.pFileImage = tk.PhotoImage(file=self.filePath)
+        #self.pFileImage = self.pFileImage.subsample(2,2)
+        #self.lFileImage.destroy()
+        #self.lFileImage = tk.Label(self, image=self.pFileImage)
+        #self.lFileImage.pack()
 
         #update filePath text
         self.tFilePath.delete(1.0,tk.END)
         self.tFilePath.insert(1.0,self.filePath)
 
     def confirmImage(self, handler):
+        #exception
+        filePath = self.tFilePath.get(1.0,tk.END)
+        filePath = filePath.rstrip("\n")
+        if not filePath:
+            messagebox.showerror(title="경로 오류", message="경로가 비어있습니다")
+            return
+            
         #copy image to App directory
         originalImage = open(self.filePath, "rb")
-        image = open(handler.photoDirectory + "\image"  + str(handler.photoNumber) + ".png", "wb")
-        handler.photoNumber = handler.photoNumber+1
+        image = open(handler.photoDirectory + "\image" + str(handler.photoNumber) + ".png", "wb")
+        
         
         while True:
             line = originalImage.readline()
@@ -140,12 +177,25 @@ class ImageAddPage(tk.Frame):
                 break
             image.write(line)
 
-        #update photoNumber    
-        f = open(handler.photoTextDirectory, "w")
-        f.write(str(handler.photoNumber))
+        #update photoNumber
+        handler.photoNumber = handler.photoNumber + 1
+        f = open(handler.photoTextDirectory, "wb")
+        pickle.dump(handler.photoNumber, f)
         f.close()
 
+        self.classfyImage(handler, filePath)
+
         handler.showPage("MainPage")
+
+    def classfyImage(self, handler, filePath):
+        #load image/encode image/classfy image
+        unknownImage = face_recognition.load_image_file(filePath)
+        
+        unknownImageEncoding = face_recognition.face_encodings(unknownImage)[0]
+        
+        results = face_recognition.face_distance(handler.charactersRepresentativeImageEncoding, unknownImageEncoding)
+        print(results)
+                
         
 class SetCharacterPage(tk.Frame):
     def __init__(self, parent, handler):        
@@ -155,13 +205,9 @@ class SetCharacterPage(tk.Frame):
         lTitle = tk.Label(self, text="SetCharacterPage")
         
         self.lCharacterList = tk.Listbox(self)
-        f = open(handler.characterTextDirectory, "r")
-        string = f.read()
-        f.close()
-        string = string.split("\n")
         i = 0
-        for ch in string:
-            self.lCharacterList.insert(i,ch)
+        for character in handler.characters:
+            self.lCharacterList.insert(i,character)
             i = i + 1
             
         self.tCharacterName = tk.Text(self, height=1)
@@ -187,52 +233,84 @@ class SetCharacterPage(tk.Frame):
         #get representativePhotoPath
         self.characterPhotoPath = tk.filedialog.askopenfilename()
 
+        #exception
+        fileName = self.characterPhotoPath.split("\\")
+        fileName = fileName[len(fileName)-1]
+        fileType = fileName.split(".")
+        fileType = fileType[1]
+        properType = ["png","PNG", "jpg", "JPG", "gif", "GIF", "jpeg", "JPEG"]
+        if fileType not in properType:
+            messagebox.showerror(title="경로 오류", message="이미지 파일이 아닙니다")
+            return
+        
         #update text
         self.tCharacterPhotoPath.delete(1.0,tk.END)
         self.tCharacterPhotoPath.insert(1.0,self.characterPhotoPath)
 
 
     def addCharacter(self, handler):
-        #make directory/update listBox/copy representative image/update characters.txt file
+        #exception
         characterName = self.tCharacterName.get(1.0,tk.END)
         characterName = characterName.rstrip("\n")
+        if not characterName:
+            messagebox.showerror(title="인물 이름 오류", message="인물 이름을 입력해주세요")
+            return
+        
+        filePath = self.tCharacterPhotoPath.get(1.0,tk.END)
+        filePath = filePath.rstrip("\n")
+        if not filePath:
+            messagebox.showerror(title="인물 대표 사진 오류", message="인물의 대표 사진을 입력해주세요")
+            return        
+        
+        #make directory/update listBox/copy representative image/make encoding/update characters.txt file
         characterDirectory = handler.characterDirectory + "\\" + characterName
         makeDir(characterDirectory)
-
+        makeFile(characterDirectory + "\character.txt")
+        makeFile(characterDirectory + "\encoding.txt")
+        f = open(characterDirectory + "\character.txt", "wb")
+        i = 0
+        pickle.dump(i, f)
+        f.close()
+        
         self.lCharacterList.insert(handler.characterNumber, characterName)
         handler.characterNumber = handler.characterNumber + 1
         
         originalImage = open(self.characterPhotoPath, "rb")
-        image = open(characterDirectory + "\\representiveImage.png", "wb")
-
+        image = open(characterDirectory + "\\representativeImage.png", "wb")
         while True:
             line = originalImage.readline()
             if not line:
                 break
             image.write(line)
+        originalImage.close()
 
-        f = open(handler.characterTextDirectory, "a")
-        f.write(characterName)
+        f = open(characterDirectory + "\encoding.txt", "wb")
+        encoding = face_recognition.face_encodings(face_recognition.load_image_file(characterDirectory + "\\representativeImage.png"))[0]
+        pickle.dump(encoding,f)
+        f.close()
+        handler.charactersRepresentativeImageEncoding.append(encoding)
+        
+        handler.characters.append(characterName)
+        f = open(handler.characterTextDirectory, "wb")
+        pickle.dump(handler.characters, f)
         f.close()
         
     def deleteCharacter(self, handler):
-        #update listBox/delete directory/update characters.txt file
+        #exception
         NameToDelete = self.lCharacterList.get(tk.ACTIVE)
         NameToDelete = NameToDelete.rstrip("\n")
+        if not NameToDelete:
+            messagebox.showerror(title="인물 선택 오류", message="삭제할 인물을 선택해주세요")
+            return
+        #update listBox/delete directory/update characters.txt file
         deleteDir(handler.characterDirectory + "\\" + NameToDelete)
         
         self.lCharacterList.delete(tk.ACTIVE)
         handler.characterNumber = handler.characterNumber - 1
-        
-        f = open(handler.characterTextDirectory, "r")
-        string =  f.read()
-        f.close()
-        f = open(handler.characterTextDirectory, "w")
-        string = string.split("\n")
-        for line in string:
-            if(line == NameToDelete):
-                continue
-            f.write(line)
+
+        handler.characters.remove(NameToDelete)
+        f = open(handler.characterTextDirectory, "wb")
+        pickle.dump(handler.characters, f)
         f.close()
 
         
